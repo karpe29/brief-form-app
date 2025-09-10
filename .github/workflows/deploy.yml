@@ -3,8 +3,6 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [ master ]
-  pull_request:
-    branches: [ master ]
 
 permissions:
   contents: read
@@ -36,15 +34,12 @@ jobs:
       
     - name: Setup Pages
       uses: actions/configure-pages@v4
-      if: github.ref == 'refs/heads/master'
       
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v3
-      if: github.ref == 'refs/heads/master'
       with:
         path: ./dist
         
     - name: Deploy to GitHub Pages
       id: deployment
       uses: actions/deploy-pages@v4
-      if: github.ref == 'refs/heads/master'
