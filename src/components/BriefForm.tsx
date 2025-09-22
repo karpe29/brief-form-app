@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Target, Users, Video, User, Plus, X, Heart, Upload, Link, Image } from 'lucide-react';
+import { Target, Users, Video, User, Plus, X, Heart, Upload, Link, Image, Download } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/Card';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
@@ -59,6 +59,10 @@ interface BriefFormData {
       lengths: string[];
       ratios: string[];
     }>;
+  };
+  section_5_brand_research: {
+    landing_page_links: Array<{ url: string }>;
+    social_media_links: Array<{ platform: string; handle_or_url: string }>;
   };
 }
 
@@ -1215,6 +1219,197 @@ export default function BriefForm({ currentSection, setCurrentSection, formData,
               )}
             </>
           )}
+        </div>
+      )}
+
+      {/* Section 5: Brand Research */}
+      {currentSection === 5 && (
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Download className="w-5 h-5" />
+                <span>Brand Research Inputs</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Landing Page Links */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label className="text-lg font-semibold">Landing Page Links</Label>
+                  <Badge variant="outline" className="text-sm">
+                    {formData.section_5_brand_research.landing_page_links.length} links
+                  </Badge>
+                </div>
+                
+                <div className="space-y-3">
+                  {formData.section_5_brand_research.landing_page_links.map((link, index) => (
+                    <div key={index} className="flex items-center space-x-2">
+                      <Input
+                        value={link.url}
+                        onChange={(e) => {
+                          const newLinks = [...formData.section_5_brand_research.landing_page_links];
+                          newLinks[index] = { url: e.target.value };
+                          updateSection('section_5_brand_research', 'landing_page_links', newLinks);
+                        }}
+                        placeholder="https://example.com"
+                        className="flex-1"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const newLinks = formData.section_5_brand_research.landing_page_links.filter((_, i) => i !== index);
+                          updateSection('section_5_brand_research', 'landing_page_links', newLinks);
+                        }}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                  
+                  <div className="flex items-center space-x-2">
+                    <Input
+                      value={newItem}
+                      onChange={(e) => setNewItem(e.target.value)}
+                      placeholder="Add landing page URL"
+                      onKeyPress={(e) => {
+                        if (e.key === 'Enter' && newItem.trim()) {
+                          const newLinks = [...formData.section_5_brand_research.landing_page_links, { url: newItem.trim() }];
+                          updateSection('section_5_brand_research', 'landing_page_links', newLinks);
+                          setNewItem('');
+                        }
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        if (newItem.trim()) {
+                          const newLinks = [...formData.section_5_brand_research.landing_page_links, { url: newItem.trim() }];
+                          updateSection('section_5_brand_research', 'landing_page_links', newLinks);
+                          setNewItem('');
+                        }
+                      }}
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Social Media Links */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label className="text-lg font-semibold">Social Media Links</Label>
+                  <Badge variant="outline" className="text-sm">
+                    {formData.section_5_brand_research.social_media_links.length} accounts
+                  </Badge>
+                </div>
+                
+                <div className="space-y-3">
+                  {formData.section_5_brand_research.social_media_links.map((social, index) => (
+                    <div key={index} className="flex items-center space-x-2">
+                      <Select
+                        value={social.platform}
+                        onValueChange={(value) => {
+                          const newSocials = [...formData.section_5_brand_research.social_media_links];
+                          newSocials[index] = { ...social, platform: value };
+                          updateSection('section_5_brand_research', 'social_media_links', newSocials);
+                        }}
+                      >
+                        <SelectTrigger className="w-32">
+                          <SelectValue placeholder="Platform" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="IG">Instagram</SelectItem>
+                          <SelectItem value="FB">Facebook</SelectItem>
+                          <SelectItem value="YT">YouTube</SelectItem>
+                          <SelectItem value="X">Twitter/X</SelectItem>
+                          <SelectItem value="TT">TikTok</SelectItem>
+                          <SelectItem value="LI">LinkedIn</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        value={social.handle_or_url}
+                        onChange={(e) => {
+                          const newSocials = [...formData.section_5_brand_research.social_media_links];
+                          newSocials[index] = { ...social, handle_or_url: e.target.value };
+                          updateSection('section_5_brand_research', 'social_media_links', newSocials);
+                        }}
+                        placeholder="@username or https://..."
+                        className="flex-1"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const newSocials = formData.section_5_brand_research.social_media_links.filter((_, i) => i !== index);
+                          updateSection('section_5_brand_research', 'social_media_links', newSocials);
+                        }}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                  
+                  <div className="flex items-center space-x-2">
+                    <Select
+                      value=""
+                      onValueChange={(platform) => {
+                        if (platform) {
+                          const newSocials = [...formData.section_5_brand_research.social_media_links, { platform, handle_or_url: '' }];
+                          updateSection('section_5_brand_research', 'social_media_links', newSocials);
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="w-32">
+                        <SelectValue placeholder="Add Platform" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="IG">Instagram</SelectItem>
+                        <SelectItem value="FB">Facebook</SelectItem>
+                        <SelectItem value="YT">YouTube</SelectItem>
+                        <SelectItem value="X">Twitter/X</SelectItem>
+                        <SelectItem value="TT">TikTok</SelectItem>
+                        <SelectItem value="LI">LinkedIn</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        const newSocials = [...formData.section_5_brand_research.social_media_links, { platform: 'IG', handle_or_url: '' }];
+                        updateSection('section_5_brand_research', 'social_media_links', newSocials);
+                      }}
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Info Box */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-start space-x-3">
+                  <div className="flex-shrink-0">
+                    <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
+                      <span className="text-blue-600 text-sm font-semibold">i</span>
+                    </div>
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="text-sm font-semibold text-blue-900 mb-1">Brand Research Process</h4>
+                    <p className="text-sm text-blue-700">
+                      The system will analyze your landing pages and social media accounts to extract brand insights, 
+                      identify competitors, and generate creative strategy recommendations. This process typically takes 2-5 minutes.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
     </div>

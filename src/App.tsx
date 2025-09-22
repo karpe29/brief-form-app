@@ -1,6 +1,10 @@
 import { useState } from 'react';
-import { Target, Users, Video, User, Download, Save } from 'lucide-react';
+import { Target, Users, Video, User, Download, Search, Upload } from 'lucide-react';
 import BriefForm from './components/BriefForm';
+import BrandResearchProgress from './components/BrandResearchProgress';
+import BrandResearchResults from './components/BrandResearchResults';
+import { Button } from './components/ui/Button';
+import { brandResearchApi, WorkflowProgress, WorkflowResponse } from './services/brandResearchApi';
 
 interface BriefFormData {
   section_1_campaign_strategy_objective: {
@@ -52,10 +56,20 @@ interface BriefFormData {
       ratios: string[];
     }>;
   };
+  section_5_brand_research: {
+    landing_page_links: Array<{ url: string }>;
+    social_media_links: Array<{ platform: string; handle_or_url: string }>;
+  };
 }
 
 function App() {
   const [currentSection, setCurrentSection] = useState(1);
+  const [isResearchInProgress, setIsResearchInProgress] = useState(false);
+  const [researchProgress, setResearchProgress] = useState<WorkflowProgress | null>(null);
+  const [researchResults, setResearchResults] = useState<WorkflowResponse | null>(null);
+  const [researchError, setResearchError] = useState<string | null>(null);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showResultsModal, setShowResultsModal] = useState(false);
   const [formData, setFormData] = useState<BriefFormData>({
     section_1_campaign_strategy_objective: {
       business_goal: { 
@@ -115,13 +129,18 @@ function App() {
     },
     section_6_personalization_inputs: {
       personalizations: []
+    },
+    section_5_brand_research: {
+      landing_page_links: [],
+      social_media_links: []
     }
   });
 
   const downloadJSON = () => {
     const briefData = {
       campaign_id: 'new-campaign',
-      brief_data: formData
+      brief_data: formData,
+      research_results: researchResults?.data || null
     };
 
     const dataStr = JSON.stringify(briefData, null, 2);
@@ -135,6 +154,192 @@ function App() {
     linkElement.click();
   };
 
+  const startBrandResearch = async () => {
+    try {
+      setIsResearchInProgress(true);
+      setResearchError(null);
+      setResearchResults(null);
+      setResearchProgress(null);
+
+      // Check if brand research inputs are provided
+      if (formData.section_5_brand_research.landing_page_links.length === 0 && 
+          formData.section_5_brand_research.social_media_links.length === 0) {
+        setResearchError('Please add at least one landing page link or social media link to start brand research.');
+        setIsResearchInProgress(false);
+        return;
+      }
+
+      // Check API health
+      const isHealthy = await brandResearchApi.healthCheck();
+      if (!isHealthy) {
+        setResearchError('Brand research API is not available. Please check if the service is running.');
+        setIsResearchInProgress(false);
+        return;
+      }
+
+      // Prepare brand research input
+      const researchInput = {
+        brand_brief: formData,
+        lp_links: formData.section_5_brand_research.landing_page_links,
+        social_links: formData.section_5_brand_research.social_media_links
+      };
+
+      // Start workflow
+      const startResponse = await brandResearchApi.startWorkflow(researchInput);
+      
+      if (!startResponse.success) {
+        throw new Error(startResponse.message);
+      }
+
+      const executionId = startResponse.data?.execution_id;
+      if (!executionId) {
+        throw new Error('No execution ID returned from workflow start');
+      }
+
+      // Start monitoring progress immediately after starting workflow
+                await brandResearchApi.monitorWorkflowProgress(
+                  executionId,
+                  (progress) => {
+                    console.log('Progress update:', progress);
+                    setResearchProgress(progress);
+                  },
+                  (results) => {
+                    console.log('Workflow completed:', results);
+                    setResearchResults(results);
+                    setIsResearchInProgress(false);
+                    setShowResultsModal(true);
+                  },
+                  (error) => {
+                    console.error('Workflow error:', error);
+                    setResearchError(error.message);
+                    setIsResearchInProgress(false);
+                  }
+                );
+
+    } catch (error) {
+      setResearchError(error instanceof Error ? error.message : 'An unknown error occurred');
+      setIsResearchInProgress(false);
+    }
+  };
+
+  const closeResearchProgress = () => {
+    setIsResearchInProgress(false);
+    setResearchProgress(null);
+    setResearchError(null);
+  };
+
+  const closeResultsModal = () => {
+    setShowResultsModal(false);
+  };
+
+  const downloadResults = () => {
+    if (!researchResults) return;
+    
+    const resultsData = {
+      brief_data: formData,
+      research_results: researchResults,
+      generated_at: new Date().toISOString(),
+      execution_id: researchResults.data?.execution_id
+    };
+
+    const dataStr = JSON.stringify(resultsData, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    const linkElement = document.createElement('a');
+    linkElement.setAttribute('href', url);
+    linkElement.setAttribute('download', `brand-research-results-${new Date().toISOString().split('T')[0]}.json`);
+    linkElement.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const jsonData = JSON.parse(e.target?.result as string);
+        
+        // Check if it's a valid brief format
+        if (jsonData.brief_data) {
+          // Merge with default form data to ensure all properties exist
+          const mergedData = {
+            ...formData,
+            ...jsonData.brief_data,
+            // Ensure nested objects have default values
+            section_1_campaign_strategy_objective: {
+              ...formData.section_1_campaign_strategy_objective,
+              ...jsonData.brief_data.section_1_campaign_strategy_objective,
+              business_goal: {
+                ...formData.section_1_campaign_strategy_objective.business_goal,
+                ...jsonData.brief_data.section_1_campaign_strategy_objective?.business_goal
+              },
+              primary_kpi_target: {
+                ...formData.section_1_campaign_strategy_objective.primary_kpi_target,
+                ...jsonData.brief_data.section_1_campaign_strategy_objective?.primary_kpi_target
+              },
+              cta: {
+                ...formData.section_1_campaign_strategy_objective.cta,
+                ...jsonData.brief_data.section_1_campaign_strategy_objective?.cta
+              }
+            },
+            section_2_audience_positioning: {
+              ...formData.section_2_audience_positioning,
+              ...jsonData.brief_data.section_2_audience_positioning,
+              audiences: jsonData.brief_data.section_2_audience_positioning?.audiences || []
+            },
+            section_3_creative_delivery_context: {
+              ...formData.section_3_creative_delivery_context,
+              ...jsonData.brief_data.section_3_creative_delivery_context,
+              channels_platforms: {
+                ...formData.section_3_creative_delivery_context.channels_platforms,
+                ...jsonData.brief_data.section_3_creative_delivery_context?.channels_platforms
+              },
+              video_duration: {
+                ...formData.section_3_creative_delivery_context.video_duration,
+                ...jsonData.brief_data.section_3_creative_delivery_context?.video_duration
+              },
+              voiceover: {
+                ...formData.section_3_creative_delivery_context.voiceover,
+                ...jsonData.brief_data.section_3_creative_delivery_context?.voiceover
+              }
+            },
+            section_4_tone_emotion: {
+              ...formData.section_4_tone_emotion,
+              ...jsonData.brief_data.section_4_tone_emotion,
+              desired_feelings: {
+                ...formData.section_4_tone_emotion.desired_feelings,
+                ...jsonData.brief_data.section_4_tone_emotion?.desired_feelings
+              }
+            },
+            section_5_brand_research: {
+              ...formData.section_5_brand_research,
+              ...jsonData.brief_data.section_5_brand_research,
+              landing_page_links: jsonData.brief_data.section_5_brand_research?.landing_page_links || [],
+              social_media_links: jsonData.brief_data.section_5_brand_research?.social_media_links || []
+            },
+            section_6_personalization_inputs: {
+              ...formData.section_6_personalization_inputs,
+              ...jsonData.brief_data.section_6_personalization_inputs,
+              personalizations: jsonData.brief_data.section_6_personalization_inputs?.personalizations || []
+            }
+          };
+          
+          setFormData(mergedData);
+          setResearchResults(jsonData.research_results ? { success: true, message: 'Research results loaded', data: jsonData.research_results } : null);
+          setShowUploadModal(false);
+          alert('Brief data loaded successfully!');
+        } else {
+          alert('Invalid JSON format. Please upload a valid brief JSON file.');
+        }
+      } catch (error) {
+        alert('Error parsing JSON file. Please make sure it\'s a valid JSON file.');
+      }
+    };
+    reader.readAsText(file);
+  };
+
   const canSave = formData.section_1_campaign_strategy_objective.business_goal.selected.length > 0 && 
                  formData.section_2_audience_positioning.audiences.length > 0;
 
@@ -142,7 +347,8 @@ function App() {
     { id: 1, title: "Strategy & Objective", icon: Target },
     { id: 2, title: "Audience Positioning", icon: Users },
     { id: 3, title: "Creative & Tone", icon: Video },
-    { id: 4, title: "Personalization", icon: User }
+    { id: 4, title: "Personalization", icon: User },
+    { id: 5, title: "Brand Research", icon: Download }
   ];
 
   return (
@@ -156,6 +362,13 @@ function App() {
           </div>
           <div className="flex space-x-3">
             <button
+              onClick={() => setShowUploadModal(true)}
+              className="flex items-center px-4 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
+            >
+              <Upload className="w-4 h-4 mr-2" />
+              Upload JSON
+            </button>
+            <button
               onClick={downloadJSON}
               className="flex items-center px-4 py-2 border border-green-600 text-green-600 rounded-lg hover:bg-green-50 transition-colors"
             >
@@ -163,11 +376,21 @@ function App() {
               Download JSON
             </button>
             <button
-              disabled={!canSave}
+              onClick={startBrandResearch}
+              disabled={!canSave || isResearchInProgress}
               className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Save className="w-4 h-4 mr-2" />
-              Save Brief
+              {isResearchInProgress ? (
+                <>
+                  <Search className="w-4 h-4 mr-2 animate-spin" />
+                  Researching...
+                </>
+              ) : (
+                <>
+                  <Search className="w-4 h-4 mr-2" />
+                  Start Brand Research
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -268,8 +491,17 @@ function App() {
                       percentage = Math.round((fields3.filter(Boolean).length / fields3.length) * 100);
                       break;
                     case 4:
-                      completed = formData.section_6_personalization_inputs.personalizations.length > 0;
+                      completed = formData.section_6_personalization_inputs?.personalizations?.length > 0;
                       percentage = completed ? 100 : 0;
+                      break;
+                    case 5:
+                      completed = formData.section_5_brand_research.landing_page_links.length > 0 || 
+                                 formData.section_5_brand_research.social_media_links.length > 0;
+                      const fields5 = [
+                        formData.section_5_brand_research.landing_page_links.length > 0,
+                        formData.section_5_brand_research.social_media_links.length > 0
+                      ];
+                      percentage = Math.round((fields5.filter(Boolean).length / fields5.length) * 100);
                       break;
                   }
 
@@ -291,10 +523,12 @@ function App() {
                       case 1: return formData.section_1_campaign_strategy_objective.business_goal.selected.length > 0;
                       case 2: return formData.section_2_audience_positioning.audiences.length > 0;
                       case 3: return formData.section_3_creative_delivery_context.channels_platforms.selected.length > 0;
-                      case 4: return formData.section_6_personalization_inputs.personalizations.length > 0;
+                      case 4: return formData.section_6_personalization_inputs?.personalizations?.length > 0;
+                      case 5: return formData.section_5_brand_research.landing_page_links.length > 0 || 
+                                   formData.section_5_brand_research.social_media_links.length > 0;
                       default: return true;
                     }
-                  }).length} of 4 sections completed
+                  }).length} of 5 sections completed
                 </p>
               </div>
             </div>
@@ -310,8 +544,8 @@ function App() {
                   Previous
                 </button>
                 <button
-                  onClick={() => setCurrentSection(Math.min(4, currentSection + 1))}
-                  disabled={currentSection === 4}
+                  onClick={() => setCurrentSection(Math.min(5, currentSection + 1))}
+                  disabled={currentSection === 5}
                   className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Next
@@ -321,6 +555,111 @@ function App() {
           </div>
         </div>
       </div>
+
+      {/* Brand Research Progress Modal */}
+      {isResearchInProgress && (
+        <BrandResearchProgress
+          executionId={researchProgress?.execution_id || 'starting...'}
+          progress={researchProgress}
+          onComplete={(results) => {
+            setResearchResults(results);
+            setIsResearchInProgress(false);
+          }}
+          onError={(error) => {
+            setResearchError(error.message);
+            setIsResearchInProgress(false);
+          }}
+          onClose={closeResearchProgress}
+        />
+      )}
+
+      {/* Brand Research Results Modal */}
+      {showResultsModal && researchResults && (
+        <BrandResearchResults
+          results={researchResults}
+          onClose={closeResultsModal}
+          onDownload={downloadResults}
+        />
+      )}
+
+      {/* Error Modal */}
+      {researchError && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
+                <span className="text-red-600 text-sm font-semibold">!</span>
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">Research Error</h3>
+            </div>
+            <p className="text-gray-600 mb-6">{researchError}</p>
+            <div className="flex justify-end">
+              <Button onClick={() => setResearchError(null)} className="bg-red-600 hover:bg-red-700">
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Success Message */}
+      {researchResults && !isResearchInProgress && !showResultsModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                <span className="text-green-600 text-sm font-semibold">✓</span>
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">Research Complete!</h3>
+            </div>
+            <p className="text-gray-600 mb-6">
+              Brand research has been completed successfully. You can now view detailed results or download the complete brief.
+            </p>
+            <div className="flex justify-end space-x-3">
+              <Button onClick={() => setShowResultsModal(true)} className="bg-blue-600 hover:bg-blue-700">
+                View Results
+              </Button>
+              <Button onClick={downloadJSON} className="bg-green-600 hover:bg-green-700">
+                <Download className="w-4 h-4 mr-2" />
+                Download Brief
+              </Button>
+              <Button onClick={() => setResearchResults(null)} variant="outline">
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Upload JSON Modal */}
+      {showUploadModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                <Upload className="w-4 h-4 text-blue-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">Upload Brief JSON</h3>
+            </div>
+            <p className="text-gray-600 mb-6">
+              Upload a previously downloaded brief JSON file to restore your data and research results.
+            </p>
+            <div className="space-y-4">
+              <input
+                type="file"
+                accept=".json"
+                onChange={handleFileUpload}
+                className="w-full p-2 border border-gray-300 rounded-lg"
+              />
+              <div className="flex justify-end space-x-3">
+                <Button onClick={() => setShowUploadModal(false)} variant="outline">
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
